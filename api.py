@@ -1266,6 +1266,21 @@ def farmer_economics(name: str, user: dict = Depends(get_current_user)):
     }
 
 
+@app.get("/farmer/me/full-ledger")
+def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
+    if user["role"] != "farmer" or user["farmer_id"] is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Farmer access required")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM farmers WHERE id = %s;", (user["farmer_id"],))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row is None:
+        return {"error": "Linked farmer not found"}
+    return get_farmer_full_ledger(row[0], user)
+
+
 @app.get("/farmer/{name}/full-ledger")
 def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
@@ -1353,18 +1368,3 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
             "margin_percent": 0 if gross_sales == 0 else round(((gross_sales - total_cost) / gross_sales) * 100, 2),
         },
     }
-
-
-@app.get("/farmer/me/full-ledger")
-def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
-    if user["role"] != "farmer" or user["farmer_id"] is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Farmer access required")
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM farmers WHERE id = %s;", (user["farmer_id"],))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if row is None:
-        return {"error": "Linked farmer not found"}
-    return get_farmer_full_ledger(row[0], user)
