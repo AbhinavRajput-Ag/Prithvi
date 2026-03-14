@@ -50,6 +50,18 @@ Start the API:
 uvicorn api:app --reload
 ```
 
+Start the Excel sync worker:
+
+```bash
+python excel_sync.py
+```
+
+Create or refresh the workbook once without watch mode:
+
+```bash
+python excel_sync.py --once
+```
+
 Open Swagger docs:
 
 - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
@@ -113,6 +125,29 @@ Authentication:
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/me`
+
+## Excel Sync
+
+The project includes [excel_sync.py](/D:/Prithvi/excel_sync.py), which maintains a master workbook at [prithvi_master_sync.xlsx](/D:/Prithvi/prithvi_master_sync.xlsx) by watching:
+
+- PostgreSQL table content
+- [schema.sql](/D:/Prithvi/schema.sql)
+- the workbook file itself
+
+When any of those change, the workbook is regenerated with:
+
+- `SyncStatus`
+- `TableSummary`
+- `SchemaFields`
+- `FieldCoverage`
+- one sheet per tracked table
+
+Optional environment variables:
+
+```env
+PRITHVI_EXCEL_PATH=D:\Prithvi\prithvi_master_sync.xlsx
+PRITHVI_SYNC_INTERVAL=10
+```
 
 Portfolio:
 
