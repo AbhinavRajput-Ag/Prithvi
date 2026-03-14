@@ -10,9 +10,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import psycopg2
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, validator
@@ -3501,3 +3502,383 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
             "margin_percent": 0 if gross_sales == 0 else round(((gross_sales - total_cost) / gross_sales) * 100, 2),
         },
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP INTEGRATION LAYER
+# Keyword-based intent router + Advisory handler + Webhook
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── WhatsApp Cloud API config ─────────────────────────────────────────────────
+
+def get_wa_token():
+    return os.getenv("WHATSAPP_TOKEN", "")
+
+def get_wa_phone_id():
+    return os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+
+def get_wa_verify_token():
+    return os.getenv("WHATSAPP_VERIFY_TOKEN", "prithvi-verify")
+
+WA_API_URL = "https://graph.facebook.com/v19.0/{phone_id}/messages"
+
+
+# ── Keyword maps (bilingual: Hindi + English + Devanagari) ────────────────────
+
+CROP_KEYWORDS = {
+    "wheat":   ["wheat", "gehun", "gehu", "गेहूं", "गेहु"],
+    "rice":    ["rice", "paddy", "dhan", "chawal", "धान", "चावल"],
+    "soybean": ["soybean", "soya", "soyabean", "soyabin", "सोयाबीन"],
+    "cotton":  ["cotton", "kapas", "narma", "कपास", "नरमा"],
+    "maize":   ["maize", "corn", "makka", "makki", "मक्का", "मक्की"],
+    "mustard": ["mustard", "sarson", "rai", "सरसों", "राई"],
+    "gram":    ["gram", "chana", "chickpea", "चना"],
+    "onion":   ["onion", "pyaz", "pyaaz", "प्याज"],
+    "tomato":  ["tomato", "tamatar", "टमाटर"],
+}
+
+SYMPTOM_KEYWORDS = {
+    "yellow_leaf": ["yellow", "peela", "peeli", "yellowing", "पीला", "पीली", "पीलापन"],
+    "wilting":     ["wilt", "murjha", "murjhana", "droop", "मुरझाना", "मुरझा"],
+    "spots":       ["spot", "daag", "daagh", "blight", "दाग", "धब्बे", "धब्बा"],
+    "pest":        ["insect", "keeda", "kide", "pest", "bug", "कीड़ा", "कीट", "कीड़े"],
+    "fungus":      ["fungus", "fungas", "mold", "rot", "फफूंद", "फंगस"],
+    "stunted":     ["stunt", "chota", "छोटा", "बौनापन"],
+    "fruit_drop":  ["fruit drop", "fal gir", "फल गिरना", "फल झड़ना"],
+    "water_stress":["sukha", "drought", "paani nahi", "पानी नहीं", "सूखा"],
+}
+
+ADVISORY_TRIGGERS = [
+    "kya karu", "kya karun", "kya karein", "suggest", "batao", "bataiye",
+    "help", "madad", "problem", "pareshani", "ho raha", "ho rahi",
+    "dikkat", "bimari", "rog", "नुकसान", "परेशानी", "बीमारी", "रोग",
+    "क्या करूं", "बताओ", "मदद",
+]
+HARVEST_TRIGGERS  = ["harvest", "katai", "kati", "cut", "kaata", "कटाई"]
+REGISTER_TRIGGERS = ["register", "naya", "new crop", "boya", "lagaya", "नया", "बोया", "लगाया"]
+PRICE_TRIGGERS    = ["price", "bhav", "rate", "mandi", "दाम", "भाव", "रेट", "मंडी"]
+HELP_TRIGGERS     = ["hi", "hello", "help", "menu", "start", "namaste", "नमस्ते", "शुरू"]
+
+
+# ── Advisory knowledge base ───────────────────────────────────────────────────
+
+ADVISORY_KB = {
+    ("wheat",   "yellow_leaf"): ("Nitrogen deficiency or Yellow Rust",
+        "एकड़ में 20 किलो यूरिया डालें। पत्तों पर पीली धारियां हों तो Propiconazole 25EC 200ml/एकड़ छिड़काव।\n"
+        "_Apply urea 20kg/acre. If yellow stripes: spray Propiconazole 25EC @ 200ml/acre._"),
+    ("wheat",   "spots"):       ("Leaf Blight / Septoria",
+        "Mancozeb 75WP 400g + Carbendazim 50WP 200g को 200L पानी में मिलाकर छिड़काव करें।\n"
+        "_Spray Mancozeb 75WP 400g/acre + Carbendazim 50WP 200g/acre in 200L water._"),
+    ("wheat",   "pest"):        ("Aphids (Mahu) or Armyworm",
+        "Imidacloprid 17.8SL 80ml/एकड़ या Chlorpyrifos 20EC 400ml/एकड़ का छिड़काव करें।\n"
+        "_Spray Imidacloprid 17.8SL @ 80ml/acre or Chlorpyrifos 20EC @ 400ml/acre._"),
+    ("rice",    "yellow_leaf"): ("Iron deficiency or Tungro virus",
+        "Ferrous Sulphate 5g/लीटर पर्ण छिड़काव करें। लीफहॉपर हो तो Buprofezin का छिड़काव।\n"
+        "_Foliar spray Ferrous Sulphate 5g/L. For leafhoppers spray Buprofezin._"),
+    ("rice",    "spots"):       ("Brown Spot or Blast",
+        "Blast: Tricyclazole 75WP 200g/एकड़। Brown Spot: Mancozeb 400g/एकड़।\n"
+        "_Blast: Tricyclazole 75WP 200g/acre. Brown Spot: Mancozeb 400g/acre._"),
+    ("rice",    "pest"):        ("Stem Borer or BPH",
+        "Cartap Hydrochloride 4G 8kg/एकड़ (stem borer)। BPH के लिए Buprofezin छिड़काव।\n"
+        "_Cartap 4G 8kg/acre for stem borer. Spray Buprofezin for BPH._"),
+    ("soybean", "yellow_leaf"): ("Iron chlorosis (common in MP black soils)",
+        "Ferrous Sulphate 5g/लीटर का छिड़काव 7 दिन के अंतर पर दो बार करें।\n"
+        "_Spray Ferrous Sulphate 5g/L twice at 7-day interval._"),
+    ("soybean", "pest"):        ("Girdle Beetle or Whitefly",
+        "Triazophos 40EC 400ml/एकड़ या Whitefly के लिए Thiamethoxam 25WG 40g/एकड़।\n"
+        "_Triazophos 40EC 400ml/acre or Thiamethoxam 25WG 40g/acre for whitefly._"),
+    ("cotton",  "pest"):        ("Bollworm or Jassid",
+        "5 फेरोमोन ट्रैप/एकड़ लगाएं। Spinosad 45SC 160ml/एकड़ छिड़काव करें।\n"
+        "_Set 5 pheromone traps/acre. Spray Spinosad 45SC @ 160ml/acre._"),
+    ("cotton",  "wilting"):     ("Fusarium / Verticillium Wilt",
+        "संक्रमित पौधे हटाएं। Carbendazim 1g/लीटर से जड़ों के पास दवाई डालें।\n"
+        "_Remove infected plants. Drench soil with Carbendazim 1g/L near healthy plants._"),
+    ("maize",   "spots"):       ("Turcicum Leaf Blight or Common Rust",
+        "Mancozeb 75WP 400g/एकड़ छिड़काव, 15 दिन बाद दोबारा करें।\n"
+        "_Spray Mancozeb 75WP 400g/acre, repeat after 15 days._"),
+    ("mustard", "yellow_leaf"): ("Downy Mildew or Alternaria Blight",
+        "Metalaxyl + Mancozeb 400g/एकड़ छिड़काव। सिंचाई कम करें।\n"
+        "_Spray Metalaxyl + Mancozeb 400g/acre. Reduce irrigation._"),
+    ("tomato",  "spots"):       ("Early Blight or Late Blight",
+        "Chlorothalonil 75WP 300g/एकड़ या Metalaxyl + Mancozeb 400g/एकड़।\n"
+        "_Spray Chlorothalonil 75WP 300g/acre or Metalaxyl + Mancozeb 400g/acre._"),
+    ("onion",   "fungus"):      ("Purple Blotch or Stemphylium Blight",
+        "Iprodione 50WP 200g/एकड़ या Mancozeb 400g/एकड़। ऊपर से सिंचाई न करें।\n"
+        "_Spray Iprodione 50WP 200g/acre or Mancozeb 400g/acre. Avoid overhead irrigation._"),
+}
+
+GENERIC_SYMPTOM_RESPONSE = {
+    "yellow_leaf":  "पत्ते पीले होने के कई कारण हो सकते हैं — नाइट्रोजन की कमी, फफूंद, या पानी। कृपया फसल का नाम भी बताएं।\n(Yellowing: nitrogen deficiency, fungal disease, or water stress. Please mention crop name.)",
+    "pest":         "कीट-नियंत्रण के लिए फसल का नाम जरूरी है। कृपया बताएं कौन सी फसल है।\n(For pest advice, please mention the crop name.)",
+    "wilting":      "मुरझाने का कारण पानी की कमी या जड़ की बीमारी हो सकती है। फसल का नाम बताएं।\n(Wilting can be water stress or root disease. Please mention crop name.)",
+    "spots":        "पत्तों पर धब्बे फफूंद या बैक्टीरिया से हो सकते हैं। फसल का नाम बताएं।\n(Leaf spots can be fungal or bacterial. Please mention crop name.)",
+}
+
+
+# ── Intent detection ──────────────────────────────────────────────────────────
+
+def _wa_tokenize(text: str):
+    import re
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
+
+def _wa_match_keywords(tokens, keyword_map):
+    joined = " ".join(tokens)
+    for key, variants in keyword_map.items():
+        for v in variants:
+            if v.lower() in tokens or v.lower() in joined:
+                return key
+    return None
+
+def _wa_detect_intent(tokens, joined):
+    for t in HARVEST_TRIGGERS:
+        if t in tokens or t in joined:
+            return "harvest"
+    for t in REGISTER_TRIGGERS:
+        if t in tokens or t in joined:
+            return "register"
+    for t in PRICE_TRIGGERS:
+        if t in tokens or t in joined:
+            return "price"
+    for t in HELP_TRIGGERS:
+        if t in tokens:
+            return "help"
+    for t in ADVISORY_TRIGGERS:
+        if t in joined:
+            return "advisory"
+    return "unknown"
+
+def wa_parse_message(text: str):
+    tokens = _wa_tokenize(text)
+    joined = " ".join(tokens)
+    crop    = _wa_match_keywords(tokens, CROP_KEYWORDS)
+    symptom = _wa_match_keywords(tokens, SYMPTOM_KEYWORDS)
+    intent  = _wa_detect_intent(tokens, joined)
+    if intent == "unknown" and (crop or symptom):
+        intent = "advisory"
+    return {"intent": intent, "crop": crop, "symptom": symptom}
+
+
+# ── Advisory response builder ─────────────────────────────────────────────────
+
+def build_advisory_response(crop, symptom):
+    if not crop and not symptom:
+        return (
+            "नमस्ते! अपनी फसल और समस्या बताएं।\n"
+            "जैसे: \"गेहूं में पत्ते पीले हो रहे हैं\"\n\n"
+            "Hello! Tell me your crop and problem.\n"
+            "E.g.: \"Wheat leaves turning yellow\""
+        )
+    if not crop:
+        return GENERIC_SYMPTOM_RESPONSE.get(
+            symptom,
+            "कृपया फसल का नाम बताएं ताकि सही सलाह दे सकें।\n(Please mention crop name for accurate advice.)"
+        )
+    if not symptom:
+        return (
+            f"आपकी {crop} फसल में क्या समस्या है?\n"
+            f"पत्ते पीले / दाग / कीड़े / मुरझाना?\n\n"
+            f"(What problem in {crop}? Yellow leaves / spots / insects / wilting?)"
+        )
+    entry = ADVISORY_KB.get((crop, symptom))
+    if entry:
+        cause, action = entry
+        return (
+            f"🌾 *{crop.title()} — {symptom.replace('_', ' ').title()}*\n\n"
+            f"*कारण:* {cause}\n\n"
+            f"*उपाय:* {action}"
+        )
+    return (
+        f"{crop.title()} में {symptom.replace('_', ' ')} के लिए नजदीकी KVK से सम्पर्क करें।\n"
+        f"(For {symptom.replace('_', ' ')} in {crop}, contact your nearest KVK.)"
+    )
+
+
+# ── WhatsApp sender ───────────────────────────────────────────────────────────
+
+async def wa_send_text(to: str, body: str):
+    token    = get_wa_token()
+    phone_id = get_wa_phone_id()
+    if not token or not phone_id:
+        logger.warning("WhatsApp credentials not configured — skipping send")
+        return False
+    url = WA_API_URL.format(phone_id=phone_id)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": body, "preview_url": False},
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            return True
+        except Exception as exc:
+            logger.error("WhatsApp send failed: %s", exc)
+            return False
+
+
+# ── DB helpers for WhatsApp users ─────────────────────────────────────────────
+
+def wa_get_or_create_farmer(whatsapp_number: str) -> Optional[int]:
+    """
+    Look up a farmer by whatsapp_number field.
+    Returns farmer_id or None if not found.
+    (Does NOT auto-create — farmers must be registered by FPO agents.)
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM farmers WHERE phone = %s;", (whatsapp_number[-10:],))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        cursor.close()
+        conn.close()
+
+def wa_log_advisory(farmer_id: Optional[int], whatsapp_number: str, raw_message: str,
+                    detected_crop: Optional[str], detected_symptom: Optional[str],
+                    response_sent: str):
+    """Log advisory interaction to whatsapp_advisory_logs table if it exists."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO whatsapp_advisory_logs
+                (farmer_id, whatsapp_number, raw_message, detected_crop, detected_symptom, response_sent)
+            VALUES (%s, %s, %s, %s, %s, %s);
+            """,
+            (farmer_id, whatsapp_number, raw_message, detected_crop, detected_symptom, response_sent),
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        logger.warning("Advisory log skipped (table may not exist yet): %s", exc)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── Webhook routes ────────────────────────────────────────────────────────────
+
+@app.get("/webhook")
+def wa_verify_webhook(
+    hub_mode: Optional[str] = None,
+    hub_verify_token: Optional[str] = None,
+    hub_challenge: Optional[str] = None,
+):
+    """Meta webhook verification challenge."""
+    # FastAPI query param aliases use underscore — Meta sends with dots, handled via Request below.
+    # This fallback handles direct query param access.
+    if hub_mode == "subscribe" and hub_verify_token == get_wa_verify_token():
+        return int(hub_challenge)
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+
+@app.get("/webhook/verify")
+async def wa_verify_webhook_raw(request: Request):
+    """Raw webhook verification — handles Meta's dot-notation query params."""
+    params = dict(request.query_params)
+    mode    = params.get("hub.mode")
+    token   = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    if mode == "subscribe" and token == get_wa_verify_token():
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=challenge)
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+
+@app.post("/webhook")
+async def wa_receive_message(request: Request):
+    """Receive and process incoming WhatsApp messages."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "ok"}
+
+    try:
+        entry   = body["entry"][0]
+        value   = entry["changes"][0]["value"]
+
+        if "messages" not in value:
+            return {"status": "ignored"}
+
+        message      = value["messages"][0]
+        from_number  = message["from"]
+        msg_type     = message.get("type", "")
+
+        if msg_type != "text":
+            await wa_send_text(
+                from_number,
+                "अभी केवल text messages support हैं।\n(Only text messages supported for now.)"
+            )
+            return {"status": "unsupported_type"}
+
+        text = message["text"]["body"].strip()
+
+    except (KeyError, IndexError) as exc:
+        logger.warning("Unexpected webhook payload: %s", exc)
+        return {"status": "ok"}  # Always 200 to Meta
+
+    # Identify farmer
+    farmer_id = wa_get_or_create_farmer(from_number)
+
+    # Parse intent
+    parsed = wa_parse_message(text)
+    intent  = parsed["intent"]
+    crop    = parsed["crop"]
+    symptom = parsed["symptom"]
+
+    logger.info("[WA] %s intent=%s crop=%s symptom=%s", from_number, intent, crop, symptom)
+
+    # Route
+    if intent == "advisory":
+        response = build_advisory_response(crop, symptom)
+        wa_log_advisory(farmer_id, from_number, text, crop, symptom, response)
+
+    elif intent == "price":
+        response = "मंडी भाव feature जल्द आ रहा है। (Mandi price feature coming soon.)"
+
+    elif intent == "register":
+        response = "फसल दर्ज करने के लिए अपने FPO agent से संपर्क करें।\n(To register a crop, contact your FPO agent.)"
+
+    elif intent == "harvest":
+        response = "कटाई log feature जल्द आ रहा है। (Harvest log coming soon.)"
+
+    elif intent == "help":
+        response = (
+            "🌾 *Prithvi - कृषि सहायक*\n\n"
+            "मुझे बताएं:\n"
+            "• फसल + समस्या → सलाह पाएं\n"
+            "  जैसे: \"गेहूं में पत्ते पीले हो रहे हैं\"\n\n"
+            "• *मंडी भाव* → आज के दाम\n\n"
+            "_Example: \"Wheat leaves turning yellow\"_"
+        )
+
+    else:
+        response = (
+            "मैं समझ नहीं पाया। फसल और समस्या बताएं।\n"
+            "जैसे: \"सोयाबीन में कीड़े लग रहे हैं\"\n\n"
+            "(Tell me your crop and problem.\n"
+            "E.g.: \"Insects in soybean\")"
+        )
+
+    await wa_send_text(from_number, response)
+    return {"status": "ok"}
+
+
+# ── Migration SQL (run once on your Render DB) ────────────────────────────────
+# Execute this in your Render PostgreSQL shell or psql:
+#
+# CREATE TABLE IF NOT EXISTS whatsapp_advisory_logs (
+#     id                SERIAL PRIMARY KEY,
+#     farmer_id         INTEGER REFERENCES farmers(id),
+#     whatsapp_number   VARCHAR(20) NOT NULL,
+#     raw_message       TEXT NOT NULL,
+#     detected_crop     VARCHAR(50),
+#     detected_symptom  VARCHAR(100),
+#     response_sent     TEXT,
+#     created_at        TIMESTAMP DEFAULT NOW()
+# );
