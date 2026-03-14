@@ -25,12 +25,18 @@ CREATE TABLE IF NOT EXISTS app_users (
 );
 
 CREATE TABLE IF NOT EXISTS land_parcels (
-    id          SERIAL PRIMARY KEY,
-    farmer_id   INTEGER REFERENCES farmers(id),
-    plot_name   VARCHAR(100),
-    area_acres  DECIMAL(8,2),
-    location    TEXT,
-    created_at  TIMESTAMP DEFAULT NOW()
+    id                 SERIAL PRIMARY KEY,
+    farmer_id          INTEGER REFERENCES farmers(id),
+    plot_name          VARCHAR(100) NOT NULL,
+    area_acres         DECIMAL(8,2) NOT NULL,
+    location           TEXT,
+    survey_number      VARCHAR(100),
+    soil_type          VARCHAR(100),
+    irrigation_source  VARCHAR(100),
+    ownership_type     VARCHAR(20) DEFAULT 'owned',
+    latitude           DECIMAL(10,7),
+    longitude          DECIMAL(10,7),
+    created_at         TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS crops (
@@ -100,6 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_harvests_crop_id ON harvests(crop_id);
 CREATE INDEX IF NOT EXISTS idx_crops_expected_harvest ON crops(expected_harvest);
 CREATE INDEX IF NOT EXISTS idx_deals_crop_id ON deals(crop_id);
 CREATE INDEX IF NOT EXISTS idx_app_users_farmer_id ON app_users(farmer_id);
+CREATE INDEX IF NOT EXISTS idx_land_parcels_farmer_id ON land_parcels(farmer_id);
 
 -- ================================================
 -- SAMPLE DATA

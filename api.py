@@ -200,6 +200,23 @@ def ensure_crop_access(user: dict, crop_id: int):
     ensure_farmer_access(user, farmer_id)
 
 
+def get_parcel_owner_id(parcel_id: int) -> Optional[int]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT farmer_id FROM land_parcels WHERE id = %s;", (parcel_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def ensure_parcel_access(user: dict, parcel_id: int):
+    farmer_id = get_parcel_owner_id(parcel_id)
+    if farmer_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found")
+    ensure_farmer_access(user, farmer_id)
+
+
 def get_deal_owner_id(deal_id: int) -> Optional[int]:
     conn = get_connection()
     cursor = conn.cursor()
@@ -255,6 +272,7 @@ class NewFarmer(BaseModel):
 
 class NewCrop(BaseModel):
     farmer_id: int
+    parcel_id: Optional[int] = None
     crop_type: str
     variety: str
     season: str
@@ -287,6 +305,38 @@ class NewCrop(BaseModel):
         if not value.strip():
             raise ValueError("Field cannot be empty")
         return value.strip()
+
+
+class NewParcel(BaseModel):
+    farmer_id: int
+    plot_name: str
+    area_acres: float
+    location: Optional[str] = None
+    survey_number: Optional[str] = None
+    soil_type: Optional[str] = None
+    irrigation_source: Optional[str] = None
+    ownership_type: str = "owned"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    @validator("plot_name")
+    def parcel_name(cls, value):
+        if not value.strip():
+            raise ValueError("Plot name cannot be empty")
+        return value.strip()
+
+    @validator("area_acres")
+    def parcel_area(cls, value):
+        if value <= 0:
+            raise ValueError("Area acres must be greater than zero")
+        return value
+
+    @validator("ownership_type")
+    def parcel_ownership(cls, value):
+        normalized = value.lower().strip()
+        if normalized not in ["owned", "leased", "shared"]:
+            raise ValueError("Ownership type must be owned, leased, or shared")
+        return normalized
 
 
 class NewCost(BaseModel):
@@ -512,13 +562,32 @@ def get_all_farmers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, village, land_acres FROM farmers ORDER BY id;")
+    cursor.execute(
+        """
+        SELECT
+            f.id,
+            f.name,
+            f.village,
+            f.land_acres,
+            COUNT(lp.id) AS parcel_count
+        FROM farmers f
+        LEFT JOIN land_parcels lp ON lp.farmer_id = f.id
+        GROUP BY f.id, f.name, f.village, f.land_acres
+        ORDER BY f.id;
+        """
+    )
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
     return {
         "farmers": [
-            {"id": row[0], "name": row[1], "village": row[2], "land_acres": float(row[3])}
+            {
+                "id": row[0],
+                "name": row[1],
+                "village": row[2],
+                "land_acres": float(row[3]),
+                "parcel_count": row[4],
+            }
             for row in rows
         ]
     }
@@ -727,6 +796,91 @@ def get_alerts_overview(user: dict = Depends(get_current_user)):
     }
 
 
+@app.get("/parcels")
+def get_parcels(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
+    if farmer_id is not None:
+        ensure_farmer_access(user, farmer_id)
+    elif user["role"] != "admin":
+        farmer_id = user["farmer_id"]
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            lp.id, lp.farmer_id, f.name, lp.plot_name, lp.area_acres, lp.location,
+            lp.survey_number, lp.soil_type, lp.irrigation_source, lp.ownership_type,
+            lp.latitude, lp.longitude
+        FROM land_parcels lp
+        JOIN farmers f ON f.id = lp.farmer_id
+    """
+    params = ()
+    if farmer_id is not None:
+        query += " WHERE lp.farmer_id = %s"
+        params = (farmer_id,)
+    query += " ORDER BY lp.id;"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {
+        "parcels": [
+            {
+                "parcel_id": row[0],
+                "farmer_id": row[1],
+                "farmer": row[2],
+                "plot_name": row[3],
+                "area_acres": float(row[4]),
+                "location": row[5],
+                "survey_number": row[6],
+                "soil_type": row[7],
+                "irrigation_source": row[8],
+                "ownership_type": row[9],
+                "latitude": float(row[10]) if row[10] is not None else None,
+                "longitude": float(row[11]) if row[11] is not None else None,
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/parcels/{parcel_id}")
+def get_parcel(parcel_id: int, user: dict = Depends(get_current_user)):
+    ensure_parcel_access(user, parcel_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            lp.id, lp.farmer_id, f.name, lp.plot_name, lp.area_acres, lp.location,
+            lp.survey_number, lp.soil_type, lp.irrigation_source, lp.ownership_type,
+            lp.latitude, lp.longitude
+        FROM land_parcels lp
+        JOIN farmers f ON f.id = lp.farmer_id
+        WHERE lp.id = %s;
+        """,
+        (parcel_id,),
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row is None:
+        return {"error": "Parcel not found"}
+    return {
+        "parcel_id": row[0],
+        "farmer_id": row[1],
+        "farmer": row[2],
+        "plot_name": row[3],
+        "area_acres": float(row[4]),
+        "location": row[5],
+        "survey_number": row[6],
+        "soil_type": row[7],
+        "irrigation_source": row[8],
+        "ownership_type": row[9],
+        "latitude": float(row[10]) if row[10] is not None else None,
+        "longitude": float(row[11]) if row[11] is not None else None,
+    }
+
+
 @app.get("/farmer/{name}")
 def get_farmer(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
@@ -762,14 +916,15 @@ def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     cursor.execute(
         """
         SELECT
-            c.id, f.name, c.crop_type, c.variety, c.season, c.year,
+            c.id, f.name, lp.id, lp.plot_name, c.crop_type, c.variety, c.season, c.year,
             c.sowing_date, c.expected_harvest, c.expected_yield_quintal,
             c.current_stage, COALESCE(SUM(i.amount), 0) AS total_cost
         FROM crops c
         JOIN farmers f ON f.id = c.farmer_id
+        LEFT JOIN land_parcels lp ON lp.id = c.parcel_id
         LEFT JOIN input_costs i ON i.crop_id = c.id
         WHERE c.id = %s
-        GROUP BY c.id, f.name, c.crop_type, c.variety, c.season, c.year,
+        GROUP BY c.id, f.name, lp.id, lp.plot_name, c.crop_type, c.variety, c.season, c.year,
                  c.sowing_date, c.expected_harvest, c.expected_yield_quintal, c.current_stage;
         """,
         (crop_id,),
@@ -782,15 +937,17 @@ def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     return {
         "crop_id": row[0],
         "farmer": row[1],
-        "crop": row[2],
-        "variety": row[3],
-        "season": row[4],
-        "year": row[5],
-        "sowing_date": str(row[6]),
-        "expected_harvest": str(row[7]),
-        "expected_yield_quintal": float(row[8]) if row[8] is not None else None,
-        "stage": row[9],
-        "total_cost": float(row[10]),
+        "parcel_id": row[2],
+        "parcel_name": row[3],
+        "crop": row[4],
+        "variety": row[5],
+        "season": row[6],
+        "year": row[7],
+        "sowing_date": str(row[8]),
+        "expected_harvest": str(row[9]),
+        "expected_yield_quintal": float(row[10]) if row[10] is not None else None,
+        "stage": row[11],
+        "total_cost": float(row[12]),
     }
 
 
@@ -1002,22 +1159,80 @@ def add_farmer(farmer: NewFarmer, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
+@app.post("/parcels/add")
+def add_parcel(parcel: NewParcel, user: dict = Depends(get_current_user)):
+    ensure_farmer_access(user, parcel.farmer_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM farmers WHERE id = %s;", (parcel.farmer_id,))
+        if cursor.fetchone() is None:
+            cursor.close()
+            conn.close()
+            return {"error": "Farmer not found"}
+        cursor.execute(
+            """
+            INSERT INTO land_parcels
+                (farmer_id, plot_name, area_acres, location, survey_number, soil_type,
+                 irrigation_source, ownership_type, latitude, longitude)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+            """,
+            (
+                parcel.farmer_id,
+                parcel.plot_name,
+                parcel.area_acres,
+                parcel.location,
+                parcel.survey_number,
+                parcel.soil_type,
+                parcel.irrigation_source,
+                parcel.ownership_type,
+                parcel.latitude,
+                parcel.longitude,
+            ),
+        )
+        parcel_id = cursor.fetchone()[0]
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {
+            "message": "Parcel registered successfully",
+            "parcel_id": parcel_id,
+            "plot_name": parcel.plot_name,
+            "farmer_id": parcel.farmer_id,
+        }
+    except Exception as exc:
+        return handle_db_error(exc, conn, cursor)
+
+
 @app.post("/crops/add")
 def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, crop.farmer_id)
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        if crop.parcel_id is not None:
+            cursor.execute("SELECT farmer_id FROM land_parcels WHERE id = %s;", (crop.parcel_id,))
+            parcel_row = cursor.fetchone()
+            if parcel_row is None:
+                cursor.close()
+                conn.close()
+                return {"error": "Parcel not found"}
+            if parcel_row[0] != crop.farmer_id:
+                cursor.close()
+                conn.close()
+                return {"error": "Parcel does not belong to this farmer"}
         cursor.execute(
             """
             INSERT INTO crops
-                (farmer_id, crop_type, variety, season, year, sowing_date,
+                (farmer_id, parcel_id, crop_type, variety, season, year, sowing_date,
                  expected_harvest, expected_yield_quintal, current_stage)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'sowing')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'sowing')
             RETURNING id;
             """,
             (
                 crop.farmer_id,
+                crop.parcel_id,
                 crop.crop_type,
                 crop.variety,
                 crop.season,
@@ -1031,7 +1246,13 @@ def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
         conn.commit()
         cursor.close()
         conn.close()
-        return {"message": "Crop registered successfully", "crop_id": new_id, "crop": crop.crop_type, "farmer_id": crop.farmer_id}
+        return {
+            "message": "Crop registered successfully",
+            "crop_id": new_id,
+            "crop": crop.crop_type,
+            "farmer_id": crop.farmer_id,
+            "parcel_id": crop.parcel_id,
+        }
     except Exception as exc:
         return handle_db_error(exc, conn, cursor)
 
@@ -1298,12 +1519,25 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     cursor.execute(
         """
         SELECT
-            c.id, c.crop_type, c.variety, c.season, c.year, c.sowing_date, c.expected_harvest,
+            id, plot_name, area_acres, location, survey_number, soil_type,
+            irrigation_source, ownership_type, latitude, longitude
+        FROM land_parcels
+        WHERE farmer_id = %s
+        ORDER BY id;
+        """,
+        (farmer_id,),
+    )
+    parcel_rows = cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT
+            c.id, c.parcel_id, lp.plot_name, c.crop_type, c.variety, c.season, c.year, c.sowing_date, c.expected_harvest,
             c.expected_yield_quintal, c.current_stage,
             COALESCE(costs.total_cost, 0), COALESCE(harvests.total_revenue, 0),
             COALESCE(harvests.total_yield_quintal, 0), COALESCE(deals.gross_amount, 0),
             COALESCE(deals.amount_received, 0)
         FROM crops c
+        LEFT JOIN land_parcels lp ON lp.id = c.parcel_id
         LEFT JOIN (SELECT crop_id, SUM(amount) AS total_cost FROM input_costs GROUP BY crop_id) costs ON costs.crop_id = c.id
         LEFT JOIN (SELECT crop_id, SUM(revenue) AS total_revenue, SUM(yield_quintal) AS total_yield_quintal FROM harvests GROUP BY crop_id) harvests ON harvests.crop_id = c.id
         LEFT JOIN (SELECT crop_id, SUM(gross_amount) AS gross_amount, SUM(amount_received) AS amount_received FROM deals GROUP BY crop_id) deals ON deals.crop_id = c.id
@@ -1326,19 +1560,21 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
         crop_id = row[0]
         crops.append({
             "crop_id": crop_id,
-            "crop": row[1],
-            "variety": row[2],
-            "season": row[3],
-            "year": row[4],
-            "sowing_date": str(row[5]),
-            "expected_harvest": str(row[6]),
-            "expected_yield_quintal": float(row[7]) if row[7] is not None else None,
-            "stage": row[8],
-            "total_cost": float(row[9]),
-            "total_revenue": float(row[10]),
-            "total_yield_quintal": float(row[11]),
-            "gross_sales": float(row[12]),
-            "amount_received": float(row[13]),
+            "parcel_id": row[1],
+            "parcel_name": row[2],
+            "crop": row[3],
+            "variety": row[4],
+            "season": row[5],
+            "year": row[6],
+            "sowing_date": str(row[7]),
+            "expected_harvest": str(row[8]),
+            "expected_yield_quintal": float(row[9]) if row[9] is not None else None,
+            "stage": row[10],
+            "total_cost": float(row[11]),
+            "total_revenue": float(row[12]),
+            "total_yield_quintal": float(row[13]),
+            "gross_sales": float(row[14]),
+            "amount_received": float(row[15]),
             "costs": [
                 {"cost_id": cost_row[1], "stage": cost_row[2], "item_name": cost_row[3], "quantity": float(cost_row[4]), "unit": cost_row[5], "amount": float(cost_row[6]), "entry_date": str(cost_row[7])}
                 for cost_row in cost_rows if cost_row[0] == crop_id and cost_row[1] is not None
@@ -1357,6 +1593,21 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     amount_received = sum(crop["amount_received"] or crop["total_revenue"] for crop in crops)
     return {
         "farmer": {"farmer_id": farmer[0], "name": farmer[1], "phone": farmer[2], "village": farmer[3], "district": farmer[4], "state": farmer[5], "land_acres": float(farmer[6])},
+        "parcels": [
+            {
+                "parcel_id": row[0],
+                "plot_name": row[1],
+                "area_acres": float(row[2]),
+                "location": row[3],
+                "survey_number": row[4],
+                "soil_type": row[5],
+                "irrigation_source": row[6],
+                "ownership_type": row[7],
+                "latitude": float(row[8]) if row[8] is not None else None,
+                "longitude": float(row[9]) if row[9] is not None else None,
+            }
+            for row in parcel_rows
+        ],
         "crops": crops,
         "economics": {
             "total_cost": total_cost,
