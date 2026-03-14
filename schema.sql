@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS crops (
     year             INTEGER,
     sowing_date      DATE,
     expected_harvest DATE,
+    expected_yield_quintal FLOAT,
     current_stage    VARCHAR(30) DEFAULT 'sowing',
     created_at       TIMESTAMP DEFAULT NOW()
 );
@@ -60,6 +61,21 @@ CREATE TABLE IF NOT EXISTS harvest_records (
     created_at    TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS harvests (
+    id SERIAL PRIMARY KEY,
+    crop_id INTEGER REFERENCES crops(id),
+    harvest_date DATE,
+    yield_quintal FLOAT,
+    selling_price FLOAT,
+    buyer TEXT,
+    revenue FLOAT
+);
+
+CREATE INDEX IF NOT EXISTS idx_crops_farmer_id ON crops(farmer_id);
+CREATE INDEX IF NOT EXISTS idx_input_costs_crop_id ON input_costs(crop_id);
+CREATE INDEX IF NOT EXISTS idx_harvests_crop_id ON harvests(crop_id);
+CREATE INDEX IF NOT EXISTS idx_crops_expected_harvest ON crops(expected_harvest);
+
 -- ================================================
 -- SAMPLE DATA
 -- ================================================
@@ -74,10 +90,10 @@ VALUES
 (1, 'North Field', 3.5, 'Near the river, north side of village'),
 (2, 'South Field', 2.0, 'Near the well, south end of village');
 
-INSERT INTO crops (farmer_id, parcel_id, crop_type, variety, season, year, sowing_date, expected_harvest, current_stage)
+INSERT INTO crops (farmer_id, parcel_id, crop_type, variety, season, year, sowing_date, expected_harvest, expected_yield_quintal, current_stage)
 VALUES 
-(1, 1, 'wheat', 'HD-2967', 'rabi', 2026, '2025-11-15', '2026-03-15', 'growing'),
-(2, 2, 'chana', 'JG-11',   'rabi', 2026, '2025-10-20', '2026-02-15', 'growing');
+(1, 1, 'wheat', 'HD-2967', 'rabi', 2026, '2025-11-15', '2026-03-15', 63, 'growing'),
+(2, 2, 'chana', 'JG-11',   'rabi', 2026, '2025-10-20', '2026-02-15', 28, 'growing');
 
 -- Additional costs for Suresh
 INSERT INTO input_costs (crop_id, stage, item_name, quantity, unit, amount)

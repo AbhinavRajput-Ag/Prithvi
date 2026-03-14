@@ -2,15 +2,21 @@
 # Prithvi — Functions v1
 # Get any farmer's data by name
 
+import os
+from pathlib import Path
+
 import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).with_name(".env"))
 
 # ── DATABASE CONNECTION ──────────────────────────
 def get_connection():
     return psycopg2.connect(
-        host="localhost",
-        database="prithvi test",
-        user="postgres",
-        password="Vijay@18091945"
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
     )
 
 # ── FUNCTION 1: Get all farmers ──────────────────
@@ -113,22 +119,13 @@ def get_breakeven(name):
             f.name,
             c.crop_type,
             SUM(i.amount) AS total_cost,
-            CASE 
-                WHEN f.name = 'Suresh Kumar' THEN 63
-                WHEN f.name = 'Ramesh Patel' THEN 28
-                ELSE 1
-            END AS expected_yield,
-            ROUND(SUM(i.amount) /
-                CASE 
-                    WHEN f.name = 'Suresh Kumar' THEN 63
-                    WHEN f.name = 'Ramesh Patel' THEN 28
-                    ELSE 1
-                END, 2) AS breakeven
+            c.expected_yield_quintal,
+            ROUND(SUM(i.amount) / c.expected_yield_quintal, 2) AS breakeven
         FROM farmers f
         JOIN crops c ON c.farmer_id = f.id
         JOIN input_costs i ON i.crop_id = c.id
         WHERE f.name = %s
-        GROUP BY f.name, c.crop_type;
+        GROUP BY f.name, c.crop_type, c.expected_yield_quintal;
     """, (name,))
 
     row = cursor.fetchone()
