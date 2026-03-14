@@ -15,6 +15,15 @@ CREATE TABLE IF NOT EXISTS farmers (
     created_at  TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS app_users (
+    id            SERIAL PRIMARY KEY,
+    username      VARCHAR(100) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          VARCHAR(20) NOT NULL DEFAULT 'farmer',
+    farmer_id     INTEGER REFERENCES farmers(id),
+    created_at    TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS land_parcels (
     id          SERIAL PRIMARY KEY,
     farmer_id   INTEGER REFERENCES farmers(id),
@@ -71,10 +80,26 @@ CREATE TABLE IF NOT EXISTS harvests (
     revenue FLOAT
 );
 
+CREATE TABLE IF NOT EXISTS deals (
+    id SERIAL PRIMARY KEY,
+    crop_id INTEGER REFERENCES crops(id),
+    sale_date DATE NOT NULL,
+    quantity_quintal FLOAT NOT NULL,
+    price_per_quintal FLOAT NOT NULL,
+    buyer TEXT NOT NULL,
+    gross_amount FLOAT NOT NULL,
+    amount_received FLOAT NOT NULL DEFAULT 0,
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_crops_farmer_id ON crops(farmer_id);
 CREATE INDEX IF NOT EXISTS idx_input_costs_crop_id ON input_costs(crop_id);
 CREATE INDEX IF NOT EXISTS idx_harvests_crop_id ON harvests(crop_id);
 CREATE INDEX IF NOT EXISTS idx_crops_expected_harvest ON crops(expected_harvest);
+CREATE INDEX IF NOT EXISTS idx_deals_crop_id ON deals(crop_id);
+CREATE INDEX IF NOT EXISTS idx_app_users_farmer_id ON app_users(farmer_id);
 
 -- ================================================
 -- SAMPLE DATA

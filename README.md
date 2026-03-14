@@ -37,6 +37,7 @@ DB_HOST=localhost
 DB_NAME=prithvi test
 DB_USER=postgres
 DB_PASSWORD=your_password
+AUTH_SECRET=change_me_to_a_long_random_secret
 ```
 
 4. Create the database tables using [schema.sql](/D:/Prithvi/schema.sql).
@@ -93,6 +94,8 @@ Crop ledger:
 - `GET /crop/{crop_id}/costs`
 - `GET /crop/{crop_id}/harvests`
 - `GET /crop/{crop_id}/economics`
+- `GET /crop/{crop_id}/deals`
+- `GET /crop/{crop_id}/final-profit`
 - `PATCH /crops/{crop_id}/stage`
 - `PATCH /crops/{crop_id}/yield`
 
@@ -102,6 +105,14 @@ Writes:
 - `POST /crops/add`
 - `POST /costs/add`
 - `POST /harvests/add`
+- `POST /deals/add`
+- `PATCH /deals/{deal_id}/payment`
+
+Authentication:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
 
 Portfolio:
 
