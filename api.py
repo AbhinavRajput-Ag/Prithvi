@@ -9,12 +9,16 @@ import psycopg2
 app = FastAPI(title="Prithvi API", version="1.0")
 
 # ── DATABASE CONNECTION ──────────────────────────
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 def get_connection():
     return psycopg2.connect(
-        host="localhost",
-        database="prithvi test",
-        user="postgres",
-        password="Vijay@18091945"
+        host=os.getenv("DB_HOST", "localhost"),
+        database=os.getenv("DB_NAME", "prithvi test"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD", "Vijay@18091945")
     )
 
 # ── ROUTE 1: Welcome message ─────────────────────
