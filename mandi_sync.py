@@ -31,9 +31,11 @@ logger = logging.getLogger(__name__)
 AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
 
 TARGETS = [
-    {"commodity": "Wheat",    "crop_type": "wheat",   "state": "Madhya Pradesh"},
-    {"commodity": "Soyabean", "crop_type": "soybean", "state": "Madhya Pradesh"},
-    {"commodity": "Rice",     "crop_type": "rice",    "state": "Madhya Pradesh"},
+    {"commodity": "Wheat", "crop_type": "wheat", "state": "Madhya Pradesh"},
+    {"commodity": "Maize", "crop_type": "maize", "state": "Madhya Pradesh"},
+    # Uncomment when in season:
+    # {"commodity": "Soyabean", "crop_type": "soybean", "state": "Madhya Pradesh"},
+    # {"commodity": "Rice",     "crop_type": "rice",     "state": "Madhya Pradesh"},
 ]
 
 

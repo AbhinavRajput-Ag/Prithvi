@@ -3512,9 +3512,11 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
 AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
 
 MANDI_TARGETS = [
-    {"commodity": "Wheat",   "crop_type": "wheat",   "state": "Madhya Pradesh"},
-    {"commodity": "Soyabean","crop_type": "soybean",  "state": "Madhya Pradesh"},
-    {"commodity": "Rice",    "crop_type": "rice",     "state": "Madhya Pradesh"},
+    {"commodity": "Wheat", "crop_type": "wheat", "state": "Madhya Pradesh"},
+    {"commodity": "Maize", "crop_type": "maize", "state": "Madhya Pradesh"},
+    # Soybean and Rice added when in season (kharif arrivals Oct-Nov)
+    # {"commodity": "Soyabean", "crop_type": "soybean", "state": "Madhya Pradesh"},
+    # {"commodity": "Rice",     "crop_type": "rice",     "state": "Madhya Pradesh"},
 ]
 
 
