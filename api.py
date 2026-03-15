@@ -29,6 +29,21 @@ app = FastAPI(
     title="Prithvi API",
     version="1.3",
     description="India's Agricultural Operating System — Crop Ledger Backend",
+    openapi_tags=[
+        {"name": "System",            "description": "Health check and root"},
+        {"name": "Auth",              "description": "Login, registration, and identity"},
+        {"name": "Dashboard",         "description": "Portfolio summaries and FPO overview"},
+        {"name": "Farmers",           "description": "Farmer profiles, members, and ledgers"},
+        {"name": "Land & Parcels",    "description": "Land parcels and soil tests"},
+        {"name": "Crops",             "description": "Crop cycles, stages, and yield"},
+        {"name": "Costs",             "description": "Input costs and expense receipts"},
+        {"name": "Harvest & Deals",   "description": "Harvest records, deals, and payments"},
+        {"name": "Economics",         "description": "Break-even, profit, and crop economics"},
+        {"name": "Passive Data",      "description": "Weather snapshots and mandi prices"},
+        {"name": "Alerts",            "description": "Risk alerts and operational warnings"},
+        {"name": "Registries",        "description": "Buyers, suppliers, and documents"},
+        {"name": "WhatsApp",          "description": "WhatsApp webhook and advisory layer"},
+    ],
 )
 
 app.add_middleware(
@@ -830,7 +845,7 @@ class DealPaymentUpdate(BaseModel):
         return value
 
 
-@app.get("/")
+@app.get("/", tags=["System"])
 def home():
     return {
         "system": "Prithvi",
@@ -840,13 +855,13 @@ def home():
     }
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 def health_check():
     ready = database_is_ready()
     return {"status": "ok" if ready else "degraded", "database_ready": ready}
 
 
-@app.post("/auth/register")
+@app.post("/auth/register", tags=["Auth"])
 def register_user(payload: UserRegister):
     if payload.role == "farmer" and payload.farmer_id is None:
         return {"error": "farmer_id is required for farmer users"}
@@ -876,7 +891,7 @@ def register_user(payload: UserRegister):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/auth/login")
+@app.post("/auth/login", tags=["Auth"])
 def login_user(payload: UserLogin):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -906,12 +921,12 @@ def login_user(payload: UserLogin):
     }
 
 
-@app.get("/auth/me")
+@app.get("/auth/me", tags=["Auth"])
 def auth_me(user: dict = Depends(get_current_user)):
     return {"user": user}
 
 
-@app.get("/farmers")
+@app.get("/farmers", tags=["Farmers"])
 def get_all_farmers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -947,7 +962,7 @@ def get_all_farmers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/dashboard/summary")
+@app.get("/dashboard/summary", tags=["Dashboard"])
 def get_dashboard_summary(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1019,7 +1034,7 @@ def get_dashboard_summary(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/dashboard/fpo-summary")
+@app.get("/dashboard/fpo-summary", tags=["Dashboard"])
 def get_fpo_summary(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1111,7 +1126,7 @@ def get_fpo_summary(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/alerts/overview")
+@app.get("/alerts/overview", tags=["Alerts"])
 def get_alerts_overview(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1183,7 +1198,7 @@ def get_alerts_overview(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/weather-snapshots")
+@app.get("/weather-snapshots", tags=["Passive Data"])
 def get_weather_snapshots(
     farmer_id: Optional[int] = None,
     parcel_id: Optional[int] = None,
@@ -1251,7 +1266,7 @@ def get_weather_snapshots(
     }
 
 
-@app.get("/mandi-prices")
+@app.get("/mandi-prices", tags=["Passive Data"])
 def get_mandi_price_snapshots(
     crop_type: Optional[str] = None,
     market_name: Optional[str] = None,
@@ -1302,7 +1317,7 @@ def get_mandi_price_snapshots(
     }
 
 
-@app.get("/risk-alerts")
+@app.get("/risk-alerts", tags=["Alerts"])
 def get_risk_alerts(
     farmer_id: Optional[int] = None,
     parcel_id: Optional[int] = None,
@@ -1371,7 +1386,7 @@ def get_risk_alerts(
     }
 
 
-@app.get("/parcels")
+@app.get("/parcels", tags=["Land & Parcels"])
 def get_parcels(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1427,7 +1442,7 @@ def get_parcels(farmer_id: Optional[int] = None, user: dict = Depends(get_curren
     }
 
 
-@app.get("/parcels/{parcel_id}")
+@app.get("/parcels/{parcel_id}", tags=["Land & Parcels"])
 def get_parcel(parcel_id: int, user: dict = Depends(get_current_user)):
     ensure_parcel_access(user, parcel_id)
     conn = get_connection()
@@ -1474,7 +1489,7 @@ def get_parcel(parcel_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/farmer-members")
+@app.get("/farmer-members", tags=["Farmers"])
 def get_farmer_members(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1516,7 +1531,7 @@ def get_farmer_members(farmer_id: Optional[int] = None, user: dict = Depends(get
     }
 
 
-@app.get("/soil-tests")
+@app.get("/soil-tests", tags=["Land & Parcels"])
 def get_soil_tests(parcel_id: Optional[int] = None, farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if parcel_id is not None:
         ensure_parcel_access(user, parcel_id)
@@ -1569,7 +1584,7 @@ def get_soil_tests(parcel_id: Optional[int] = None, farmer_id: Optional[int] = N
     }
 
 
-@app.get("/documents")
+@app.get("/documents", tags=["Registries"])
 def get_documents(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1613,7 +1628,7 @@ def get_documents(farmer_id: Optional[int] = None, user: dict = Depends(get_curr
     }
 
 
-@app.get("/buyers")
+@app.get("/buyers", tags=["Registries"])
 def get_buyers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1648,7 +1663,7 @@ def get_buyers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/suppliers")
+@app.get("/suppliers", tags=["Registries"])
 def get_suppliers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1682,7 +1697,7 @@ def get_suppliers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/yield-revisions")
+@app.get("/crop/{crop_id}/yield-revisions", tags=["Crops"])
 def get_yield_revisions(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1716,7 +1731,7 @@ def get_yield_revisions(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/receipts")
+@app.get("/receipts", tags=["Costs"])
 def get_receipts(farmer_id: Optional[int] = None, crop_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if crop_id is not None:
         ensure_crop_access(user, crop_id)
@@ -1765,7 +1780,7 @@ def get_receipts(farmer_id: Optional[int] = None, crop_id: Optional[int] = None,
     }
 
 
-@app.get("/farmer/{name}")
+@app.get("/farmer/{name}", tags=["Farmers"])
 def get_farmer(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -1804,7 +1819,7 @@ def get_farmer(name: str, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}")
+@app.get("/crop/{crop_id}", tags=["Crops"])
 def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1854,7 +1869,7 @@ def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/costs")
+@app.get("/crop/{crop_id}/costs", tags=["Costs"])
 def get_crop_costs(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1880,7 +1895,7 @@ def get_crop_costs(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/harvests")
+@app.get("/crop/{crop_id}/harvests", tags=["Harvest & Deals"])
 def get_crop_harvests(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1902,7 +1917,7 @@ def get_crop_harvests(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/deals")
+@app.get("/crop/{crop_id}/deals", tags=["Harvest & Deals"])
 def get_crop_deals(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1922,7 +1937,7 @@ def get_crop_deals(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/economics")
+@app.get("/crop/{crop_id}/economics", tags=["Economics"])
 def get_crop_economics(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -2076,7 +2091,7 @@ def get_crop_economics(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/final-profit")
+@app.get("/crop/{crop_id}/final-profit", tags=["Economics"])
 def get_crop_final_profit(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -2114,7 +2129,7 @@ def get_crop_final_profit(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/breakeven/{name}")
+@app.get("/breakeven/{name}", tags=["Economics"])
 def get_breakeven(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -2144,7 +2159,7 @@ def get_breakeven(name: str, user: dict = Depends(get_current_user)):
     return {"farmer": row[0], "crop": row[1], "total_cost": float(row[2]), "expected_yield_quintal": float(row[3]), "breakeven_per_quintal": float(row[4])}
 
 
-@app.post("/farmers/add")
+@app.post("/farmers/add", tags=["Farmers"])
 def add_farmer(farmer: NewFarmer, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2184,7 +2199,7 @@ def add_farmer(farmer: NewFarmer, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/parcels/add")
+@app.post("/parcels/add", tags=["Land & Parcels"])
 def add_parcel(parcel: NewParcel, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, parcel.farmer_id)
     conn = get_connection()
@@ -2239,7 +2254,7 @@ def add_parcel(parcel: NewParcel, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/farmer-members/add")
+@app.post("/farmer-members/add", tags=["Farmers"])
 def add_farmer_member(member: NewFarmerMember, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, member.farmer_id)
     conn = get_connection()
@@ -2279,7 +2294,7 @@ def add_farmer_member(member: NewFarmerMember, user: dict = Depends(get_current_
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/soil-tests/add")
+@app.post("/soil-tests/add", tags=["Land & Parcels"])
 def add_soil_test(test: NewSoilTest, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, test.farmer_id)
     ensure_parcel_access(user, test.parcel_id)
@@ -2327,7 +2342,7 @@ def add_soil_test(test: NewSoilTest, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/documents/add")
+@app.post("/documents/add", tags=["Registries"])
 def add_document(document: NewFarmerDocument, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, document.farmer_id)
     if document.parcel_id is not None:
@@ -2368,7 +2383,7 @@ def add_document(document: NewFarmerDocument, user: dict = Depends(get_current_u
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/buyers/add")
+@app.post("/buyers/add", tags=["Registries"])
 def add_buyer(buyer: NewBuyerRegistry, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2403,7 +2418,7 @@ def add_buyer(buyer: NewBuyerRegistry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/suppliers/add")
+@app.post("/suppliers/add", tags=["Registries"])
 def add_supplier(supplier: NewInputSupplier, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2437,7 +2452,7 @@ def add_supplier(supplier: NewInputSupplier, user: dict = Depends(get_current_us
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/weather-snapshots/add")
+@app.post("/weather-snapshots/add", tags=["Passive Data"])
 def add_weather_snapshot(entry: WeatherSnapshotEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.parcel_id is not None:
@@ -2512,7 +2527,7 @@ def add_weather_snapshot(entry: WeatherSnapshotEntry, user: dict = Depends(get_c
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/mandi-prices/add")
+@app.post("/mandi-prices/add", tags=["Passive Data"])
 def add_mandi_price_snapshot(entry: MandiPriceSnapshotEntry, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2550,7 +2565,7 @@ def add_mandi_price_snapshot(entry: MandiPriceSnapshotEntry, user: dict = Depend
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/risk-alerts/add")
+@app.post("/risk-alerts/add", tags=["Alerts"])
 def add_risk_alert(entry: RiskAlertEventEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.parcel_id is not None:
@@ -2619,7 +2634,7 @@ def add_risk_alert(entry: RiskAlertEventEntry, user: dict = Depends(get_current_
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/yield-revisions/add")
+@app.post("/yield-revisions/add", tags=["Crops"])
 def add_yield_revision(entry: YieldEstimateRevisionEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     conn = get_connection()
@@ -2669,7 +2684,7 @@ def add_yield_revision(entry: YieldEstimateRevisionEntry, user: dict = Depends(g
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/receipts/add")
+@app.post("/receipts/add", tags=["Costs"])
 def add_receipt(entry: ExpenseReceiptEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.crop_id is not None:
@@ -2727,7 +2742,7 @@ def add_receipt(entry: ExpenseReceiptEntry, user: dict = Depends(get_current_use
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/crops/add")
+@app.post("/crops/add", tags=["Crops"])
 def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, crop.farmer_id)
     conn = get_connection()
@@ -2786,7 +2801,7 @@ def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/costs/add")
+@app.post("/costs/add", tags=["Costs"])
 def add_cost(cost: NewCost, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, cost.crop_id)
     conn = get_connection()
@@ -2836,7 +2851,7 @@ def add_cost(cost: NewCost, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/harvests/add")
+@app.post("/harvests/add", tags=["Harvest & Deals"])
 def add_harvest(entry: HarvestEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     revenue = entry.yield_quintal * entry.selling_price
@@ -2900,7 +2915,7 @@ def add_harvest(entry: HarvestEntry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/deals/add")
+@app.post("/deals/add", tags=["Harvest & Deals"])
 def add_deal(entry: DealEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     gross_amount = entry.quantity_quintal * entry.price_per_quintal
@@ -2956,7 +2971,7 @@ def add_deal(entry: DealEntry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/deals/{deal_id}/payment")
+@app.patch("/deals/{deal_id}/payment", tags=["Harvest & Deals"])
 def update_deal_payment(deal_id: int, data: DealPaymentUpdate, user: dict = Depends(get_current_user)):
     ensure_deal_access(user, deal_id)
     conn = get_connection()
@@ -2993,7 +3008,7 @@ def update_deal_payment(deal_id: int, data: DealPaymentUpdate, user: dict = Depe
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/crops/{crop_id}/stage")
+@app.patch("/crops/{crop_id}/stage", tags=["Crops"])
 def update_crop_stage(crop_id: int, data: CropStageUpdate, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -3011,7 +3026,7 @@ def update_crop_stage(crop_id: int, data: CropStageUpdate, user: dict = Depends(
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/crops/{crop_id}/yield")
+@app.patch("/crops/{crop_id}/yield", tags=["Crops"])
 def update_crop_yield(crop_id: int, data: CropYieldUpdate, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -3029,7 +3044,7 @@ def update_crop_yield(crop_id: int, data: CropYieldUpdate, user: dict = Depends(
         return handle_db_error(exc, conn, cursor)
 
 
-@app.get("/farmer/{name}/economics")
+@app.get("/farmer/{name}/economics", tags=["Farmers"])
 def farmer_economics(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -3074,7 +3089,7 @@ def farmer_economics(name: str, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/farmer/me/full-ledger")
+@app.get("/farmer/me/full-ledger", tags=["Farmers"])
 def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
     if user["role"] != "farmer" or user["farmer_id"] is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Farmer access required")
@@ -3089,7 +3104,7 @@ def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
     return get_farmer_full_ledger(row[0], user)
 
 
-@app.get("/farmer/{name}/full-ledger")
+@app.get("/farmer/{name}/full-ledger", tags=["Farmers"])
 def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -3763,7 +3778,7 @@ def wa_log_advisory(farmer_id: Optional[int], whatsapp_number: str, raw_message:
 
 # ── Webhook routes ────────────────────────────────────────────────────────────
 
-@app.get("/webhook")
+@app.get("/webhook", tags=["WhatsApp"])
 def wa_verify_webhook(
     hub_mode: Optional[str] = None,
     hub_verify_token: Optional[str] = None,
@@ -3777,7 +3792,7 @@ def wa_verify_webhook(
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
-@app.get("/webhook/verify")
+@app.get("/webhook/verify", tags=["WhatsApp"])
 async def wa_verify_webhook_raw(request: Request):
     """Raw webhook verification — handles Meta's dot-notation query params."""
     params = dict(request.query_params)
@@ -3790,7 +3805,7 @@ async def wa_verify_webhook_raw(request: Request):
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
-@app.post("/webhook")
+@app.post("/webhook", tags=["WhatsApp"])
 async def wa_receive_message(request: Request):
     """Receive and process incoming WhatsApp messages."""
     try:
