@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-import httpx
 import psycopg2
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
@@ -29,21 +28,6 @@ app = FastAPI(
     title="Prithvi API",
     version="1.3",
     description="India's Agricultural Operating System — Crop Ledger Backend",
-    openapi_tags=[
-        {"name": "System",            "description": "Health check and root"},
-        {"name": "Auth",              "description": "Login, registration, and identity"},
-        {"name": "Dashboard",         "description": "Portfolio summaries and FPO overview"},
-        {"name": "Farmers",           "description": "Farmer profiles, members, and ledgers"},
-        {"name": "Land & Parcels",    "description": "Land parcels and soil tests"},
-        {"name": "Crops",             "description": "Crop cycles, stages, and yield"},
-        {"name": "Costs",             "description": "Input costs and expense receipts"},
-        {"name": "Harvest & Deals",   "description": "Harvest records, deals, and payments"},
-        {"name": "Economics",         "description": "Break-even, profit, and crop economics"},
-        {"name": "Passive Data",      "description": "Weather snapshots and mandi prices"},
-        {"name": "Alerts",            "description": "Risk alerts and operational warnings"},
-        {"name": "Registries",        "description": "Buyers, suppliers, and documents"},
-        {"name": "WhatsApp",          "description": "WhatsApp webhook and advisory layer"},
-    ],
 )
 
 app.add_middleware(
@@ -845,7 +829,7 @@ class DealPaymentUpdate(BaseModel):
         return value
 
 
-@app.get("/", tags=["System"])
+@app.get("/")
 def home():
     return {
         "system": "Prithvi",
@@ -855,13 +839,13 @@ def home():
     }
 
 
-@app.get("/health", tags=["System"])
+@app.get("/health")
 def health_check():
     ready = database_is_ready()
     return {"status": "ok" if ready else "degraded", "database_ready": ready}
 
 
-@app.post("/auth/register", tags=["Auth"])
+@app.post("/auth/register")
 def register_user(payload: UserRegister):
     if payload.role == "farmer" and payload.farmer_id is None:
         return {"error": "farmer_id is required for farmer users"}
@@ -891,7 +875,7 @@ def register_user(payload: UserRegister):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/auth/login", tags=["Auth"])
+@app.post("/auth/login")
 def login_user(payload: UserLogin):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -921,12 +905,12 @@ def login_user(payload: UserLogin):
     }
 
 
-@app.get("/auth/me", tags=["Auth"])
+@app.get("/auth/me")
 def auth_me(user: dict = Depends(get_current_user)):
     return {"user": user}
 
 
-@app.get("/farmers", tags=["Farmers"])
+@app.get("/farmers")
 def get_all_farmers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -962,7 +946,7 @@ def get_all_farmers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/dashboard/summary", tags=["Dashboard"])
+@app.get("/dashboard/summary")
 def get_dashboard_summary(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1034,7 +1018,7 @@ def get_dashboard_summary(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/dashboard/fpo-summary", tags=["Dashboard"])
+@app.get("/dashboard/fpo-summary")
 def get_fpo_summary(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1126,7 +1110,7 @@ def get_fpo_summary(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/alerts/overview", tags=["Alerts"])
+@app.get("/alerts/overview")
 def get_alerts_overview(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1198,7 +1182,7 @@ def get_alerts_overview(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/weather-snapshots", tags=["Passive Data"])
+@app.get("/weather-snapshots")
 def get_weather_snapshots(
     farmer_id: Optional[int] = None,
     parcel_id: Optional[int] = None,
@@ -1266,7 +1250,7 @@ def get_weather_snapshots(
     }
 
 
-@app.get("/mandi-prices", tags=["Passive Data"])
+@app.get("/mandi-prices")
 def get_mandi_price_snapshots(
     crop_type: Optional[str] = None,
     market_name: Optional[str] = None,
@@ -1317,7 +1301,7 @@ def get_mandi_price_snapshots(
     }
 
 
-@app.get("/risk-alerts", tags=["Alerts"])
+@app.get("/risk-alerts")
 def get_risk_alerts(
     farmer_id: Optional[int] = None,
     parcel_id: Optional[int] = None,
@@ -1386,7 +1370,7 @@ def get_risk_alerts(
     }
 
 
-@app.get("/parcels", tags=["Land & Parcels"])
+@app.get("/parcels")
 def get_parcels(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1442,7 +1426,7 @@ def get_parcels(farmer_id: Optional[int] = None, user: dict = Depends(get_curren
     }
 
 
-@app.get("/parcels/{parcel_id}", tags=["Land & Parcels"])
+@app.get("/parcels/{parcel_id}")
 def get_parcel(parcel_id: int, user: dict = Depends(get_current_user)):
     ensure_parcel_access(user, parcel_id)
     conn = get_connection()
@@ -1489,7 +1473,7 @@ def get_parcel(parcel_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/farmer-members", tags=["Farmers"])
+@app.get("/farmer-members")
 def get_farmer_members(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1531,7 +1515,7 @@ def get_farmer_members(farmer_id: Optional[int] = None, user: dict = Depends(get
     }
 
 
-@app.get("/soil-tests", tags=["Land & Parcels"])
+@app.get("/soil-tests")
 def get_soil_tests(parcel_id: Optional[int] = None, farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if parcel_id is not None:
         ensure_parcel_access(user, parcel_id)
@@ -1584,7 +1568,7 @@ def get_soil_tests(parcel_id: Optional[int] = None, farmer_id: Optional[int] = N
     }
 
 
-@app.get("/documents", tags=["Registries"])
+@app.get("/documents")
 def get_documents(farmer_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if farmer_id is not None:
         ensure_farmer_access(user, farmer_id)
@@ -1628,7 +1612,7 @@ def get_documents(farmer_id: Optional[int] = None, user: dict = Depends(get_curr
     }
 
 
-@app.get("/buyers", tags=["Registries"])
+@app.get("/buyers")
 def get_buyers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1663,7 +1647,7 @@ def get_buyers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/suppliers", tags=["Registries"])
+@app.get("/suppliers")
 def get_suppliers(user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -1697,7 +1681,7 @@ def get_suppliers(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/yield-revisions", tags=["Crops"])
+@app.get("/crop/{crop_id}/yield-revisions")
 def get_yield_revisions(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1731,7 +1715,7 @@ def get_yield_revisions(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/receipts", tags=["Costs"])
+@app.get("/receipts")
 def get_receipts(farmer_id: Optional[int] = None, crop_id: Optional[int] = None, user: dict = Depends(get_current_user)):
     if crop_id is not None:
         ensure_crop_access(user, crop_id)
@@ -1780,7 +1764,7 @@ def get_receipts(farmer_id: Optional[int] = None, crop_id: Optional[int] = None,
     }
 
 
-@app.get("/farmer/{name}", tags=["Farmers"])
+@app.get("/farmer/{name}")
 def get_farmer(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -1819,7 +1803,7 @@ def get_farmer(name: str, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}", tags=["Crops"])
+@app.get("/crop/{crop_id}")
 def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1869,7 +1853,7 @@ def get_crop(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/costs", tags=["Costs"])
+@app.get("/crop/{crop_id}/costs")
 def get_crop_costs(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1895,7 +1879,7 @@ def get_crop_costs(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/harvests", tags=["Harvest & Deals"])
+@app.get("/crop/{crop_id}/harvests")
 def get_crop_harvests(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1917,7 +1901,7 @@ def get_crop_harvests(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/deals", tags=["Harvest & Deals"])
+@app.get("/crop/{crop_id}/deals")
 def get_crop_deals(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -1937,7 +1921,7 @@ def get_crop_deals(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/economics", tags=["Economics"])
+@app.get("/crop/{crop_id}/economics")
 def get_crop_economics(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -2091,7 +2075,7 @@ def get_crop_economics(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/crop/{crop_id}/final-profit", tags=["Economics"])
+@app.get("/crop/{crop_id}/final-profit")
 def get_crop_final_profit(crop_id: int, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -2129,7 +2113,7 @@ def get_crop_final_profit(crop_id: int, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/breakeven/{name}", tags=["Economics"])
+@app.get("/breakeven/{name}")
 def get_breakeven(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -2159,7 +2143,7 @@ def get_breakeven(name: str, user: dict = Depends(get_current_user)):
     return {"farmer": row[0], "crop": row[1], "total_cost": float(row[2]), "expected_yield_quintal": float(row[3]), "breakeven_per_quintal": float(row[4])}
 
 
-@app.post("/farmers/add", tags=["Farmers"])
+@app.post("/farmers/add")
 def add_farmer(farmer: NewFarmer, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2199,7 +2183,7 @@ def add_farmer(farmer: NewFarmer, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/parcels/add", tags=["Land & Parcels"])
+@app.post("/parcels/add")
 def add_parcel(parcel: NewParcel, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, parcel.farmer_id)
     conn = get_connection()
@@ -2254,7 +2238,7 @@ def add_parcel(parcel: NewParcel, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/farmer-members/add", tags=["Farmers"])
+@app.post("/farmer-members/add")
 def add_farmer_member(member: NewFarmerMember, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, member.farmer_id)
     conn = get_connection()
@@ -2294,7 +2278,7 @@ def add_farmer_member(member: NewFarmerMember, user: dict = Depends(get_current_
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/soil-tests/add", tags=["Land & Parcels"])
+@app.post("/soil-tests/add")
 def add_soil_test(test: NewSoilTest, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, test.farmer_id)
     ensure_parcel_access(user, test.parcel_id)
@@ -2342,7 +2326,7 @@ def add_soil_test(test: NewSoilTest, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/documents/add", tags=["Registries"])
+@app.post("/documents/add")
 def add_document(document: NewFarmerDocument, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, document.farmer_id)
     if document.parcel_id is not None:
@@ -2383,7 +2367,7 @@ def add_document(document: NewFarmerDocument, user: dict = Depends(get_current_u
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/buyers/add", tags=["Registries"])
+@app.post("/buyers/add")
 def add_buyer(buyer: NewBuyerRegistry, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2418,7 +2402,7 @@ def add_buyer(buyer: NewBuyerRegistry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/suppliers/add", tags=["Registries"])
+@app.post("/suppliers/add")
 def add_supplier(supplier: NewInputSupplier, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2452,7 +2436,7 @@ def add_supplier(supplier: NewInputSupplier, user: dict = Depends(get_current_us
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/weather-snapshots/add", tags=["Passive Data"])
+@app.post("/weather-snapshots/add")
 def add_weather_snapshot(entry: WeatherSnapshotEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.parcel_id is not None:
@@ -2527,7 +2511,7 @@ def add_weather_snapshot(entry: WeatherSnapshotEntry, user: dict = Depends(get_c
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/mandi-prices/add", tags=["Passive Data"])
+@app.post("/mandi-prices/add")
 def add_mandi_price_snapshot(entry: MandiPriceSnapshotEntry, user: dict = Depends(get_current_user)):
     ensure_admin(user)
     conn = get_connection()
@@ -2565,7 +2549,7 @@ def add_mandi_price_snapshot(entry: MandiPriceSnapshotEntry, user: dict = Depend
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/risk-alerts/add", tags=["Alerts"])
+@app.post("/risk-alerts/add")
 def add_risk_alert(entry: RiskAlertEventEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.parcel_id is not None:
@@ -2634,7 +2618,7 @@ def add_risk_alert(entry: RiskAlertEventEntry, user: dict = Depends(get_current_
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/yield-revisions/add", tags=["Crops"])
+@app.post("/yield-revisions/add")
 def add_yield_revision(entry: YieldEstimateRevisionEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     conn = get_connection()
@@ -2684,7 +2668,7 @@ def add_yield_revision(entry: YieldEstimateRevisionEntry, user: dict = Depends(g
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/receipts/add", tags=["Costs"])
+@app.post("/receipts/add")
 def add_receipt(entry: ExpenseReceiptEntry, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, entry.farmer_id)
     if entry.crop_id is not None:
@@ -2742,7 +2726,7 @@ def add_receipt(entry: ExpenseReceiptEntry, user: dict = Depends(get_current_use
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/crops/add", tags=["Crops"])
+@app.post("/crops/add")
 def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
     ensure_farmer_access(user, crop.farmer_id)
     conn = get_connection()
@@ -2801,7 +2785,7 @@ def add_crop(crop: NewCrop, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/costs/add", tags=["Costs"])
+@app.post("/costs/add")
 def add_cost(cost: NewCost, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, cost.crop_id)
     conn = get_connection()
@@ -2851,7 +2835,7 @@ def add_cost(cost: NewCost, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/harvests/add", tags=["Harvest & Deals"])
+@app.post("/harvests/add")
 def add_harvest(entry: HarvestEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     revenue = entry.yield_quintal * entry.selling_price
@@ -2915,7 +2899,7 @@ def add_harvest(entry: HarvestEntry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.post("/deals/add", tags=["Harvest & Deals"])
+@app.post("/deals/add")
 def add_deal(entry: DealEntry, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, entry.crop_id)
     gross_amount = entry.quantity_quintal * entry.price_per_quintal
@@ -2971,7 +2955,7 @@ def add_deal(entry: DealEntry, user: dict = Depends(get_current_user)):
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/deals/{deal_id}/payment", tags=["Harvest & Deals"])
+@app.patch("/deals/{deal_id}/payment")
 def update_deal_payment(deal_id: int, data: DealPaymentUpdate, user: dict = Depends(get_current_user)):
     ensure_deal_access(user, deal_id)
     conn = get_connection()
@@ -3008,7 +2992,7 @@ def update_deal_payment(deal_id: int, data: DealPaymentUpdate, user: dict = Depe
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/crops/{crop_id}/stage", tags=["Crops"])
+@app.patch("/crops/{crop_id}/stage")
 def update_crop_stage(crop_id: int, data: CropStageUpdate, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -3026,7 +3010,7 @@ def update_crop_stage(crop_id: int, data: CropStageUpdate, user: dict = Depends(
         return handle_db_error(exc, conn, cursor)
 
 
-@app.patch("/crops/{crop_id}/yield", tags=["Crops"])
+@app.patch("/crops/{crop_id}/yield")
 def update_crop_yield(crop_id: int, data: CropYieldUpdate, user: dict = Depends(get_current_user)):
     ensure_crop_access(user, crop_id)
     conn = get_connection()
@@ -3044,7 +3028,7 @@ def update_crop_yield(crop_id: int, data: CropYieldUpdate, user: dict = Depends(
         return handle_db_error(exc, conn, cursor)
 
 
-@app.get("/farmer/{name}/economics", tags=["Farmers"])
+@app.get("/farmer/{name}/economics")
 def farmer_economics(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -3089,7 +3073,7 @@ def farmer_economics(name: str, user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/farmer/me/full-ledger", tags=["Farmers"])
+@app.get("/farmer/me/full-ledger")
 def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
     if user["role"] != "farmer" or user["farmer_id"] is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Farmer access required")
@@ -3104,7 +3088,7 @@ def get_my_farmer_full_ledger(user: dict = Depends(get_current_user)):
     return get_farmer_full_ledger(row[0], user)
 
 
-@app.get("/farmer/{name}/full-ledger", tags=["Farmers"])
+@app.get("/farmer/{name}/full-ledger")
 def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     farmer_id = get_farmer_id_by_name(name)
     if farmer_id is None:
@@ -3519,381 +3503,3 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# WHATSAPP INTEGRATION LAYER
-# Keyword-based intent router + Advisory handler + Webhook
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# ── WhatsApp Cloud API config ─────────────────────────────────────────────────
-
-def get_wa_token():
-    return os.getenv("WHATSAPP_TOKEN", "")
-
-def get_wa_phone_id():
-    return os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
-
-def get_wa_verify_token():
-    return os.getenv("WHATSAPP_VERIFY_TOKEN", "prithvi-verify")
-
-WA_API_URL = "https://graph.facebook.com/v19.0/{phone_id}/messages"
-
-
-# ── Keyword maps (bilingual: Hindi + English + Devanagari) ────────────────────
-
-CROP_KEYWORDS = {
-    "wheat":   ["wheat", "gehun", "gehu", "गेहूं", "गेहु"],
-    "rice":    ["rice", "paddy", "dhan", "chawal", "धान", "चावल"],
-    "soybean": ["soybean", "soya", "soyabean", "soyabin", "सोयाबीन"],
-    "cotton":  ["cotton", "kapas", "narma", "कपास", "नरमा"],
-    "maize":   ["maize", "corn", "makka", "makki", "मक्का", "मक्की"],
-    "mustard": ["mustard", "sarson", "rai", "सरसों", "राई"],
-    "gram":    ["gram", "chana", "chickpea", "चना"],
-    "onion":   ["onion", "pyaz", "pyaaz", "प्याज"],
-    "tomato":  ["tomato", "tamatar", "टमाटर"],
-}
-
-SYMPTOM_KEYWORDS = {
-    "yellow_leaf": ["yellow", "peela", "peeli", "yellowing", "पीला", "पीली", "पीलापन"],
-    "wilting":     ["wilt", "murjha", "murjhana", "droop", "मुरझाना", "मुरझा"],
-    "spots":       ["spot", "daag", "daagh", "blight", "दाग", "धब्बे", "धब्बा"],
-    "pest":        ["insect", "keeda", "kide", "pest", "bug", "कीड़ा", "कीट", "कीड़े"],
-    "fungus":      ["fungus", "fungas", "mold", "rot", "फफूंद", "फंगस"],
-    "stunted":     ["stunt", "chota", "छोटा", "बौनापन"],
-    "fruit_drop":  ["fruit drop", "fal gir", "फल गिरना", "फल झड़ना"],
-    "water_stress":["sukha", "drought", "paani nahi", "पानी नहीं", "सूखा"],
-}
-
-ADVISORY_TRIGGERS = [
-    "kya karu", "kya karun", "kya karein", "suggest", "batao", "bataiye",
-    "help", "madad", "problem", "pareshani", "ho raha", "ho rahi",
-    "dikkat", "bimari", "rog", "नुकसान", "परेशानी", "बीमारी", "रोग",
-    "क्या करूं", "बताओ", "मदद",
-]
-HARVEST_TRIGGERS  = ["harvest", "katai", "kati", "cut", "kaata", "कटाई"]
-REGISTER_TRIGGERS = ["register", "naya", "new crop", "boya", "lagaya", "नया", "बोया", "लगाया"]
-PRICE_TRIGGERS    = ["price", "bhav", "rate", "mandi", "दाम", "भाव", "रेट", "मंडी"]
-HELP_TRIGGERS     = ["hi", "hello", "help", "menu", "start", "namaste", "नमस्ते", "शुरू"]
-
-
-# ── Advisory knowledge base ───────────────────────────────────────────────────
-
-ADVISORY_KB = {
-    ("wheat",   "yellow_leaf"): ("Nitrogen deficiency or Yellow Rust",
-        "एकड़ में 20 किलो यूरिया डालें। पत्तों पर पीली धारियां हों तो Propiconazole 25EC 200ml/एकड़ छिड़काव।\n"
-        "_Apply urea 20kg/acre. If yellow stripes: spray Propiconazole 25EC @ 200ml/acre._"),
-    ("wheat",   "spots"):       ("Leaf Blight / Septoria",
-        "Mancozeb 75WP 400g + Carbendazim 50WP 200g को 200L पानी में मिलाकर छिड़काव करें।\n"
-        "_Spray Mancozeb 75WP 400g/acre + Carbendazim 50WP 200g/acre in 200L water._"),
-    ("wheat",   "pest"):        ("Aphids (Mahu) or Armyworm",
-        "Imidacloprid 17.8SL 80ml/एकड़ या Chlorpyrifos 20EC 400ml/एकड़ का छिड़काव करें।\n"
-        "_Spray Imidacloprid 17.8SL @ 80ml/acre or Chlorpyrifos 20EC @ 400ml/acre._"),
-    ("rice",    "yellow_leaf"): ("Iron deficiency or Tungro virus",
-        "Ferrous Sulphate 5g/लीटर पर्ण छिड़काव करें। लीफहॉपर हो तो Buprofezin का छिड़काव।\n"
-        "_Foliar spray Ferrous Sulphate 5g/L. For leafhoppers spray Buprofezin._"),
-    ("rice",    "spots"):       ("Brown Spot or Blast",
-        "Blast: Tricyclazole 75WP 200g/एकड़। Brown Spot: Mancozeb 400g/एकड़।\n"
-        "_Blast: Tricyclazole 75WP 200g/acre. Brown Spot: Mancozeb 400g/acre._"),
-    ("rice",    "pest"):        ("Stem Borer or BPH",
-        "Cartap Hydrochloride 4G 8kg/एकड़ (stem borer)। BPH के लिए Buprofezin छिड़काव।\n"
-        "_Cartap 4G 8kg/acre for stem borer. Spray Buprofezin for BPH._"),
-    ("soybean", "yellow_leaf"): ("Iron chlorosis (common in MP black soils)",
-        "Ferrous Sulphate 5g/लीटर का छिड़काव 7 दिन के अंतर पर दो बार करें।\n"
-        "_Spray Ferrous Sulphate 5g/L twice at 7-day interval._"),
-    ("soybean", "pest"):        ("Girdle Beetle or Whitefly",
-        "Triazophos 40EC 400ml/एकड़ या Whitefly के लिए Thiamethoxam 25WG 40g/एकड़।\n"
-        "_Triazophos 40EC 400ml/acre or Thiamethoxam 25WG 40g/acre for whitefly._"),
-    ("cotton",  "pest"):        ("Bollworm or Jassid",
-        "5 फेरोमोन ट्रैप/एकड़ लगाएं। Spinosad 45SC 160ml/एकड़ छिड़काव करें।\n"
-        "_Set 5 pheromone traps/acre. Spray Spinosad 45SC @ 160ml/acre._"),
-    ("cotton",  "wilting"):     ("Fusarium / Verticillium Wilt",
-        "संक्रमित पौधे हटाएं। Carbendazim 1g/लीटर से जड़ों के पास दवाई डालें।\n"
-        "_Remove infected plants. Drench soil with Carbendazim 1g/L near healthy plants._"),
-    ("maize",   "spots"):       ("Turcicum Leaf Blight or Common Rust",
-        "Mancozeb 75WP 400g/एकड़ छिड़काव, 15 दिन बाद दोबारा करें।\n"
-        "_Spray Mancozeb 75WP 400g/acre, repeat after 15 days._"),
-    ("mustard", "yellow_leaf"): ("Downy Mildew or Alternaria Blight",
-        "Metalaxyl + Mancozeb 400g/एकड़ छिड़काव। सिंचाई कम करें।\n"
-        "_Spray Metalaxyl + Mancozeb 400g/acre. Reduce irrigation._"),
-    ("tomato",  "spots"):       ("Early Blight or Late Blight",
-        "Chlorothalonil 75WP 300g/एकड़ या Metalaxyl + Mancozeb 400g/एकड़।\n"
-        "_Spray Chlorothalonil 75WP 300g/acre or Metalaxyl + Mancozeb 400g/acre._"),
-    ("onion",   "fungus"):      ("Purple Blotch or Stemphylium Blight",
-        "Iprodione 50WP 200g/एकड़ या Mancozeb 400g/एकड़। ऊपर से सिंचाई न करें।\n"
-        "_Spray Iprodione 50WP 200g/acre or Mancozeb 400g/acre. Avoid overhead irrigation._"),
-}
-
-GENERIC_SYMPTOM_RESPONSE = {
-    "yellow_leaf":  "पत्ते पीले होने के कई कारण हो सकते हैं — नाइट्रोजन की कमी, फफूंद, या पानी। कृपया फसल का नाम भी बताएं।\n(Yellowing: nitrogen deficiency, fungal disease, or water stress. Please mention crop name.)",
-    "pest":         "कीट-नियंत्रण के लिए फसल का नाम जरूरी है। कृपया बताएं कौन सी फसल है।\n(For pest advice, please mention the crop name.)",
-    "wilting":      "मुरझाने का कारण पानी की कमी या जड़ की बीमारी हो सकती है। फसल का नाम बताएं।\n(Wilting can be water stress or root disease. Please mention crop name.)",
-    "spots":        "पत्तों पर धब्बे फफूंद या बैक्टीरिया से हो सकते हैं। फसल का नाम बताएं।\n(Leaf spots can be fungal or bacterial. Please mention crop name.)",
-}
-
-
-# ── Intent detection ──────────────────────────────────────────────────────────
-
-def _wa_tokenize(text: str):
-    import re
-    return re.sub(r"[^\w\s]", " ", text.lower()).split()
-
-def _wa_match_keywords(tokens, keyword_map):
-    joined = " ".join(tokens)
-    for key, variants in keyword_map.items():
-        for v in variants:
-            if v.lower() in tokens or v.lower() in joined:
-                return key
-    return None
-
-def _wa_detect_intent(tokens, joined):
-    for t in HARVEST_TRIGGERS:
-        if t in tokens or t in joined:
-            return "harvest"
-    for t in REGISTER_TRIGGERS:
-        if t in tokens or t in joined:
-            return "register"
-    for t in PRICE_TRIGGERS:
-        if t in tokens or t in joined:
-            return "price"
-    for t in HELP_TRIGGERS:
-        if t in tokens:
-            return "help"
-    for t in ADVISORY_TRIGGERS:
-        if t in joined:
-            return "advisory"
-    return "unknown"
-
-def wa_parse_message(text: str):
-    tokens = _wa_tokenize(text)
-    joined = " ".join(tokens)
-    crop    = _wa_match_keywords(tokens, CROP_KEYWORDS)
-    symptom = _wa_match_keywords(tokens, SYMPTOM_KEYWORDS)
-    intent  = _wa_detect_intent(tokens, joined)
-    if intent == "unknown" and (crop or symptom):
-        intent = "advisory"
-    return {"intent": intent, "crop": crop, "symptom": symptom}
-
-
-# ── Advisory response builder ─────────────────────────────────────────────────
-
-def build_advisory_response(crop, symptom):
-    if not crop and not symptom:
-        return (
-            "नमस्ते! अपनी फसल और समस्या बताएं।\n"
-            "जैसे: \"गेहूं में पत्ते पीले हो रहे हैं\"\n\n"
-            "Hello! Tell me your crop and problem.\n"
-            "E.g.: \"Wheat leaves turning yellow\""
-        )
-    if not crop:
-        return GENERIC_SYMPTOM_RESPONSE.get(
-            symptom,
-            "कृपया फसल का नाम बताएं ताकि सही सलाह दे सकें।\n(Please mention crop name for accurate advice.)"
-        )
-    if not symptom:
-        return (
-            f"आपकी {crop} फसल में क्या समस्या है?\n"
-            f"पत्ते पीले / दाग / कीड़े / मुरझाना?\n\n"
-            f"(What problem in {crop}? Yellow leaves / spots / insects / wilting?)"
-        )
-    entry = ADVISORY_KB.get((crop, symptom))
-    if entry:
-        cause, action = entry
-        return (
-            f"🌾 *{crop.title()} — {symptom.replace('_', ' ').title()}*\n\n"
-            f"*कारण:* {cause}\n\n"
-            f"*उपाय:* {action}"
-        )
-    return (
-        f"{crop.title()} में {symptom.replace('_', ' ')} के लिए नजदीकी KVK से सम्पर्क करें।\n"
-        f"(For {symptom.replace('_', ' ')} in {crop}, contact your nearest KVK.)"
-    )
-
-
-# ── WhatsApp sender ───────────────────────────────────────────────────────────
-
-async def wa_send_text(to: str, body: str):
-    token    = get_wa_token()
-    phone_id = get_wa_phone_id()
-    if not token or not phone_id:
-        logger.warning("WhatsApp credentials not configured — skipping send")
-        return False
-    url = WA_API_URL.format(phone_id=phone_id)
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": body, "preview_url": False},
-    }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            return True
-        except Exception as exc:
-            logger.error("WhatsApp send failed: %s", exc)
-            return False
-
-
-# ── DB helpers for WhatsApp users ─────────────────────────────────────────────
-
-def wa_get_or_create_farmer(whatsapp_number: str) -> Optional[int]:
-    """
-    Look up a farmer by whatsapp_number field.
-    Returns farmer_id or None if not found.
-    (Does NOT auto-create — farmers must be registered by FPO agents.)
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT id FROM farmers WHERE phone = %s;", (whatsapp_number[-10:],))
-        row = cursor.fetchone()
-        return row[0] if row else None
-    finally:
-        cursor.close()
-        conn.close()
-
-def wa_log_advisory(farmer_id: Optional[int], whatsapp_number: str, raw_message: str,
-                    detected_crop: Optional[str], detected_symptom: Optional[str],
-                    response_sent: str):
-    """Log advisory interaction to whatsapp_advisory_logs table if it exists."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
-            INSERT INTO whatsapp_advisory_logs
-                (farmer_id, whatsapp_number, raw_message, detected_crop, detected_symptom, response_sent)
-            VALUES (%s, %s, %s, %s, %s, %s);
-            """,
-            (farmer_id, whatsapp_number, raw_message, detected_crop, detected_symptom, response_sent),
-        )
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        logger.warning("Advisory log skipped (table may not exist yet): %s", exc)
-    finally:
-        cursor.close()
-        conn.close()
-
-
-# ── Webhook routes ────────────────────────────────────────────────────────────
-
-@app.get("/webhook", tags=["WhatsApp"])
-def wa_verify_webhook(
-    hub_mode: Optional[str] = None,
-    hub_verify_token: Optional[str] = None,
-    hub_challenge: Optional[str] = None,
-):
-    """Meta webhook verification challenge."""
-    # FastAPI query param aliases use underscore — Meta sends with dots, handled via Request below.
-    # This fallback handles direct query param access.
-    if hub_mode == "subscribe" and hub_verify_token == get_wa_verify_token():
-        return int(hub_challenge)
-    raise HTTPException(status_code=403, detail="Webhook verification failed")
-
-
-@app.get("/webhook/verify", tags=["WhatsApp"])
-async def wa_verify_webhook_raw(request: Request):
-    """Raw webhook verification — handles Meta's dot-notation query params."""
-    params = dict(request.query_params)
-    mode    = params.get("hub.mode")
-    token   = params.get("hub.verify_token")
-    challenge = params.get("hub.challenge")
-    if mode == "subscribe" and token == get_wa_verify_token():
-        from fastapi.responses import PlainTextResponse
-        return PlainTextResponse(content=challenge)
-    raise HTTPException(status_code=403, detail="Webhook verification failed")
-
-
-@app.post("/webhook", tags=["WhatsApp"])
-async def wa_receive_message(request: Request):
-    """Receive and process incoming WhatsApp messages."""
-    try:
-        body = await request.json()
-    except Exception:
-        return {"status": "ok"}
-
-    try:
-        entry   = body["entry"][0]
-        value   = entry["changes"][0]["value"]
-
-        if "messages" not in value:
-            return {"status": "ignored"}
-
-        message      = value["messages"][0]
-        from_number  = message["from"]
-        msg_type     = message.get("type", "")
-
-        if msg_type != "text":
-            await wa_send_text(
-                from_number,
-                "अभी केवल text messages support हैं।\n(Only text messages supported for now.)"
-            )
-            return {"status": "unsupported_type"}
-
-        text = message["text"]["body"].strip()
-
-    except (KeyError, IndexError) as exc:
-        logger.warning("Unexpected webhook payload: %s", exc)
-        return {"status": "ok"}  # Always 200 to Meta
-
-    # Identify farmer
-    farmer_id = wa_get_or_create_farmer(from_number)
-
-    # Parse intent
-    parsed = wa_parse_message(text)
-    intent  = parsed["intent"]
-    crop    = parsed["crop"]
-    symptom = parsed["symptom"]
-
-    logger.info("[WA] %s intent=%s crop=%s symptom=%s", from_number, intent, crop, symptom)
-
-    # Route
-    if intent == "advisory":
-        response = build_advisory_response(crop, symptom)
-        wa_log_advisory(farmer_id, from_number, text, crop, symptom, response)
-
-    elif intent == "price":
-        response = "मंडी भाव feature जल्द आ रहा है। (Mandi price feature coming soon.)"
-
-    elif intent == "register":
-        response = "फसल दर्ज करने के लिए अपने FPO agent से संपर्क करें।\n(To register a crop, contact your FPO agent.)"
-
-    elif intent == "harvest":
-        response = "कटाई log feature जल्द आ रहा है। (Harvest log coming soon.)"
-
-    elif intent == "help":
-        response = (
-            "🌾 *Prithvi - कृषि सहायक*\n\n"
-            "मुझे बताएं:\n"
-            "• फसल + समस्या → सलाह पाएं\n"
-            "  जैसे: \"गेहूं में पत्ते पीले हो रहे हैं\"\n\n"
-            "• *मंडी भाव* → आज के दाम\n\n"
-            "_Example: \"Wheat leaves turning yellow\"_"
-        )
-
-    else:
-        response = (
-            "मैं समझ नहीं पाया। फसल और समस्या बताएं।\n"
-            "जैसे: \"सोयाबीन में कीड़े लग रहे हैं\"\n\n"
-            "(Tell me your crop and problem.\n"
-            "E.g.: \"Insects in soybean\")"
-        )
-
-    await wa_send_text(from_number, response)
-    return {"status": "ok"}
-
-
-# ── Migration SQL (run once on your Render DB) ────────────────────────────────
-# Execute this in your Render PostgreSQL shell or psql:
-#
-# CREATE TABLE IF NOT EXISTS whatsapp_advisory_logs (
-#     id                SERIAL PRIMARY KEY,
-#     farmer_id         INTEGER REFERENCES farmers(id),
-#     whatsapp_number   VARCHAR(20) NOT NULL,
-#     raw_message       TEXT NOT NULL,
-#     detected_crop     VARCHAR(50),
-#     detected_symptom  VARCHAR(100),
-#     response_sent     TEXT,
-#     created_at        TIMESTAMP DEFAULT NOW()
-# );
