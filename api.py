@@ -3503,3 +3503,180 @@ def get_farmer_full_ledger(name: str, user: dict = Depends(get_current_user)):
     }
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MANDI PRICE SYNC — data.gov.in Agmarknet Integration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
+
+MANDI_TARGETS = [
+    {"commodity": "Wheat",   "crop_type": "wheat",   "state": "Madhya Pradesh"},
+    {"commodity": "Soyabean","crop_type": "soybean",  "state": "Madhya Pradesh"},
+    {"commodity": "Rice",    "crop_type": "rice",     "state": "Madhya Pradesh"},
+]
+
+
+def get_agmarknet_api_key():
+    return os.getenv("AGMARKNET_API_KEY", "")
+
+
+def fetch_mandi_records(commodity: str, state: str, limit: int = 50) -> list:
+    """Fetch latest mandi prices from data.gov.in for a commodity+state."""
+    import urllib.request
+    import urllib.parse
+
+    api_key = get_agmarknet_api_key()
+    if not api_key:
+        raise ValueError("AGMARKNET_API_KEY not set")
+
+    params = urllib.parse.urlencode({
+        "api-key": api_key,
+        "format": "json",
+        "limit": limit,
+        "filters[state.keyword]": state,
+        "filters[commodity]": commodity,
+    })
+    url = f"{AGMARKNET_URL}?{params}"
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Prithvi/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode())
+
+    return data.get("records", [])
+
+
+def store_mandi_records(records: list, crop_type: str, source_name: str = "agmarknet") -> int:
+    """Insert mandi price records into mandi_price_snapshots. Returns count inserted."""
+    if not records:
+        return 0
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    inserted = 0
+
+    try:
+        for rec in records:
+            try:
+                # Parse arrival date DD/MM/YYYY → YYYY-MM-DD
+                raw_date = rec.get("arrival_date", "")
+                if raw_date:
+                    parts = raw_date.split("/")
+                    snapshot_date = f"{parts[2]}-{parts[1]}-{parts[0]}" if len(parts) == 3 else raw_date
+                else:
+                    from datetime import date
+                    snapshot_date = str(date.today())
+
+                cursor.execute(
+                    """
+                    INSERT INTO mandi_price_snapshots
+                        (crop_type, variety, market_name, district, state,
+                         snapshot_date, min_price, modal_price, max_price,
+                         source_name, raw_payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING;
+                    """,
+                    (
+                        crop_type,
+                        rec.get("variety"),
+                        rec.get("market"),
+                        rec.get("district"),
+                        rec.get("state"),
+                        snapshot_date,
+                        rec.get("min_price"),
+                        rec.get("modal_price"),
+                        rec.get("max_price"),
+                        source_name,
+                        json.dumps(rec),
+                    ),
+                )
+                inserted += 1
+            except Exception as row_exc:
+                logger.warning("Skipped mandi row: %s", row_exc)
+                continue
+
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        raise exc
+    finally:
+        cursor.close()
+        conn.close()
+
+    return inserted
+
+
+@app.get("/mandi-prices/latest", tags=["Passive Data"])
+def get_latest_mandi_prices(user: dict = Depends(get_current_user)):
+    """
+    Returns the single most recent modal price per crop_type per market
+    from mandi_price_snapshots. Useful for dashboard price widgets.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT ON (crop_type, market_name)
+                crop_type, variety, market_name, district, state,
+                snapshot_date, min_price, modal_price, max_price, source_name
+            FROM mandi_price_snapshots
+            ORDER BY crop_type, market_name, snapshot_date DESC, id DESC;
+            """
+        )
+        rows = cursor.fetchall()
+        return {
+            "count": len(rows),
+            "prices": [
+                {
+                    "crop_type":     row[0],
+                    "variety":       row[1],
+                    "market":        row[2],
+                    "district":      row[3],
+                    "state":         row[4],
+                    "date":          str(row[5]),
+                    "min_price":     float(row[6]) if row[6] else None,
+                    "modal_price":   float(row[7]) if row[7] else None,
+                    "max_price":     float(row[8]) if row[8] else None,
+                    "source":        row[9],
+                }
+                for row in rows
+            ],
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/mandi-prices/sync", tags=["Passive Data"])
+def sync_mandi_prices(user: dict = Depends(get_current_user)):
+    """
+    Fetches latest mandi prices from data.gov.in Agmarknet for
+    wheat, soybean, and rice in Madhya Pradesh and stores them.
+    Admin only.
+    """
+    ensure_admin(user)
+
+    results = []
+    errors  = []
+
+    for target in MANDI_TARGETS:
+        try:
+            records = fetch_mandi_records(target["commodity"], target["state"])
+            count   = store_mandi_records(records, target["crop_type"])
+            results.append({
+                "commodity": target["commodity"],
+                "fetched":   len(records),
+                "inserted":  count,
+            })
+            logger.info("Mandi sync: %s → %d fetched, %d inserted", target["commodity"], len(records), count)
+        except Exception as exc:
+            errors.append({"commodity": target["commodity"], "error": str(exc)})
+            logger.error("Mandi sync failed for %s: %s", target["commodity"], exc)
+
+    return {
+        "message": "Mandi sync complete",
+        "results": results,
+        "errors":  errors,
+    }
